@@ -3,7 +3,7 @@
 // Subimos un nivel (../) para encontrar config.php y templates/
 require_once '../config.php';
 require_once '../templates/header.php';
-
+//
 // Variables para manejar errores y datos
 $errores = [];
 $datos = [

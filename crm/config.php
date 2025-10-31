@@ -40,7 +40,7 @@ try {
 }
 
 // IMPORTANTE:
-// No cierres la etiqueta PHP (?>) si este archivo contiene *solo* código PHP.
+// No cierres la etiqueta PHP  si este archivo contiene *solo* código PHP. 
 // Esto previene errores de "headers already sent" causados por espacios en blanco accidentales
 // al final del archivo, que es una causa común de errores de sintaxis (Parse errors)
 // cuando se incluye en otros ficheros.
