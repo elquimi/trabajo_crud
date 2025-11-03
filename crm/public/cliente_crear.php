@@ -1,207 +1,188 @@
 <?php
-// 1. INCLUIR CONFIGURACIÓN Y HEADER
-// Subimos un nivel (../) para encontrar config.php y templates/
-require_once '../config.php';
-require_once '../templates/header.php';
-//
-// Variables para manejar errores y datos
-$errores = [];
-$datos = [
-    'nombre' => '',
-    'email' => '',
-    'telefono' => '',
-    'direccion' => '',
-    'etiqueta' => 'activo',
-    'tipo_id' => null,
-    'comentarios' => ''
-];
+// /crm/public/cliente_crear.php [cite: 74]
 
-// 2. LÓGICA PARA CARGAR TIPOS DE CLIENTE (PARA EL <SELECT>)
-// Esto se necesita tanto para mostrar el formulario (GET) como para procesarlo (POST)
+require '../config.php'; // $pdo está disponible
+
+$error_msg = '';
+$success_msg = '';
+
+// Lógica para cargar los tipos de cliente en el <select> [cite: 98]
 try {
-    $stmt_tipos = $pdo->query("SELECT id, tipo FROM tipo_cliente ORDER BY tipo");
-    $tipos_cliente = $stmt_tipos->fetchAll(PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
-    $errores[] = "Error al cargar los tipos de cliente: " . $e->getMessage();
-    $tipos_cliente = []; // Aseguramos que sea un array para el foreach
+    $tipos_stmt = $pdo->query("SELECT * FROM tipo_cliente ORDER BY tipo");
+    $tipos_cliente = $tipos_stmt->fetchAll();
+} catch (\PDOException $e) {
+    $error_msg = "Error al cargar los tipos de cliente: " . $e->getMessage();
+    $tipos_cliente = [];
 }
 
 
-// 3. PROCESAR EL FORMULARIO (SI SE ENVIÓ POR POST)
+// --- INICIO: LÓGICA DE PROCESADO DEL FORMULARIO ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // 1. Recoger datos del formulario
+    $nombre = $_POST['nombre'] ?? '';
+    $email = $_POST['email'] ?? '';
+    $telefono = $_POST['telefono'] ?? '';
+    $direccion = $_POST['direccion'] ?? '';
+    $etiqueta = $_POST['etiqueta'] ?? 'activo';
+    $tipo_id = $_POST['tipo_id'] ?? null;
+    $comentarios = $_POST['comentarios'] ?? '';
+    
+    // Variables para la imagen
+    $imagen_original = null;
+    $imagen_fisica = null;
 
-    // --- Recogida y saneamiento básico de datos ---
-    $datos['nombre'] = trim($_POST['nombre'] ?? '');
-    $datos['email'] = trim($_POST['email'] ?? '');
-    $datos['telefono'] = trim($_POST['telefono'] ?? '');
-    $datos['direccion'] = trim($_POST['direccion'] ?? '');
-    $datos['etiqueta'] = trim($_POST['etiqueta'] ?? 'activo');
-    $datos['tipo_id'] = filter_var($_POST['tipo_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-    $datos['comentarios'] = trim($_POST['comentarios'] ?? '');
+    // 2. Validación de datos obligatorios [cite: 12]
+    if (empty($nombre)) {
+        $error_msg = 'El nombre es obligatorio.';
+    } elseif (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error_msg = 'El formato del email no es válido.'; //[cite: 12]
+    } else {
 
-    $imagen_original = '';
-    $imagen_fisica = '';
-
-    [cite_start]// --- Validaciones de datos --- [cite: 12]
-    if (empty($datos['nombre'])) {
-        $errores[] = "El nombre es obligatorio.";
-    }
-    if (!empty($datos['email']) && !filter_var($datos['email'], FILTER_VALIDATE_EMAIL)) {
-        $errores[] = "El formato del email no es válido.";
-    }
-    if ($datos['tipo_id'] === false) { // Si el filtro falla
-        $datos['tipo_id'] = null; // Guardar como NULL si no es válido
-    }
-
-    [cite_start]// --- Procesamiento de la imagen --- [cite: 83-89]
-    if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
-        
-        $imagen_tmp = $_FILES['imagen']['tmp_name']; [cite_start]// [cite: 106]
-        $imagen_original = $_FILES['imagen']['name']; [cite_start]// [cite: 107]
-        $imagen_size = $_FILES['imagen']['size'];
-
-        [cite_start]// Validación 1: Tamaño (< 3MB) [cite: 12]
-        if ($imagen_size > 3 * 1024 * 1024) {
-            $errores[] = "La imagen es demasiado grande (máximo 3 MB).";
-        }
-
-        [cite_start]// Validación 2: Tipo MIME real (JPG o PNG) [cite: 12, 86]
-        $finfo = new finfo(FILEINFO_MIME_TYPE); [cite_start]// [cite: 108]
-        $mime_real = $finfo->file($imagen_tmp); [cite_start]// [cite: 109]
-        $tipos_permitidos = ['image/jpeg', 'image/png'];
-
-        if (!in_array($mime_real, $tipos_permitidos)) {
-            $errores[] = "Tipo de imagen no permitido (solo JPG o PNG).";
-        }
-
-        // Si la imagen es válida, generar nombre y mover
-        if (empty($errores)) {
-            $extension = pathinfo($imagen_original, PATHINFO_EXTENSION); [cite_start]// [cite: 112]
-            $hash = bin2hex(random_bytes(16)); [cite_start]// [cite: 111]
-            $imagen_fisica = $hash . '.' . $extension; [cite_start]// [cite: 113]
-
-            // Ruta de destino (subiendo un nivel desde 'public/' a 'uploads/clients/')
-            $destino = '../uploads/clients/' . $imagen_fisica; [cite_start]// [cite: 77, 114]
-
-            [cite_start]if (!move_uploaded_file($imagen_tmp, $destino)) { // [cite: 88, 115]
-                $errores[] = "Error al mover el fichero subido.";
-                $imagen_original = '';
-                $imagen_fisica = '';
-            }
-        }
-
-    } // Fin procesamiento imagen
-
-    // --- Inserción en Base de Datos (si no hay errores) ---
-    if (empty($errores)) {
         try {
-            [cite_start]// [cite: 117-119]
-            $sql = "INSERT INTO cliente (nombre, email, telefono, direccion, etiqueta, imagen, nombre_fisico_imagen, tipo_id, comentarios)
-                    VALUES (:nombre, :email, :telefono, :direccion, :etiqueta, :imagen, :nombre_fisico_imagen, :tipo_id, :comentarios)";
+            // --- 3. Lógica de Subida de Fichero [cite: 8, 83-89] ---
+            if (isset($_FILES['imagen']) && $_FILES['imagen']['error'] === UPLOAD_ERR_OK) {
+                
+                $file = $_FILES['imagen'];
+                $tmp_name = $file['tmp_name'];
+                $imagen_original = $file['name'];
+                $file_size = $file['size'];
+
+                // Validación de tamaño (3MB) [cite: 12]
+                if ($file_size > 3 * 1024 * 1024) { // 3 MB
+                    throw new Exception('El fichero es demasiado grande (Máx 3MB).');
+                }
+
+                // Validación de tipo MIME real [cite: 86, 108]
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime_type = $finfo->file($tmp_name);
+                $allowed_types = ['image/jpeg', 'image/png'];
+
+                if (!in_array($mime_type, $allowed_types)) { //[cite: 12]
+                    throw new Exception('Tipo de fichero no permitido (Solo JPG o PNG).');
+                }
+
+                // Generar nombre físico único (hash) [cite: 9, 87, 111]
+                $ext = pathinfo($imagen_original, PATHINFO_EXTENSION);
+                $hash = bin2hex(random_bytes(16)); // 32 caracteres
+                $imagen_fisica = $hash . '.' . $ext; 
+                
+                // Mover el fichero al destino [cite: 88, 115]
+                $upload_dir = __DIR__ . '/../uploads/clients/'; 
+                $destination = $upload_dir . $imagen_fisica;
+
+                if (!move_uploaded_file($tmp_name, $destination)) {
+                    throw new Exception('Error al mover el fichero subido.');
+                }
+            } // Fin de la subida de fichero
+
+            // --- 4. Inserción en la Base de Datos (PDO) [cite: 116-131] ---
+            $sql = "INSERT INTO cliente (nombre, email, telefono, direccion, etiqueta, 
+                                        imagen, nombre_fisico_imagen, tipo_id, comentarios)
+                    VALUES (:nombre, :email, :telefono, :direccion, :etiqueta, 
+                            :imagen, :nombre_fisico_imagen, :tipo_id, :comentarios)";
             
-            $stmt = $pdo->prepare($sql); [cite_start]// [cite: 120]
+            $stmt = $pdo->prepare($sql);
             
-            [cite_start]$stmt->execute([ // [cite: 121]
-                [cite_start]':nombre' => $datos['nombre'], // [cite: 122]
-                [cite_start]':email' => $datos['email'], // [cite: 123]
-                [cite_start]':telefono' => $datos['telefono'], // [cite: 124]
-                [cite_start]':direccion' => $datos['direccion'], // [cite: 125]
-                [cite_start]':etiqueta' => $datos['etiqueta'], // [cite: 126]
-                [cite_start]':imagen' => $imagen_original, // [cite: 127]
-                [cite_start]':nombre_fisico_imagen' => $imagen_fisica, // [cite: 128]
-                [cite_start]':tipo_id' => $datos['tipo_id'], // [cite: 129]
-                [cite_start]':comentarios' => $datos['comentarios'] // [cite: 130]
+            $stmt->execute([
+                ':nombre' => $nombre,
+                ':email' => $email,
+                ':telefono' => $telefono,
+                ':direccion' => $direccion,
+                ':etiqueta' => $etiqueta,
+                ':imagen' => $imagen_original,
+                ':nombre_fisico_imagen' => $imagen_fisica,
+                ':tipo_id' => ($tipo_id == '0') ? null : $tipo_id, // Asumir '0' como 'ninguno'
+                ':comentarios' => $comentarios
             ]);
 
-            // Redirigir al listado (index.php)
-            header("Location: index.php?status=created");
-            exit; // Importante salir después de una redirección
+            $success_msg = '¡Cliente creado con éxito!';
+            // Opcional: Redirigir al index
+            // header('Location: index.php?status=created');
+            // exit;
 
-        } catch (PDOException $e) {
-            $errores[] = "Error al guardar en la base de datos: " . $e->getMessage();
+        } catch (Exception $e) {
+            $error_msg = 'Error: ' . $e->getMessage();
+            // Si hubo un error y ya se subió la imagen, la borramos
+            if (isset($destination) && file_exists($destination)) {
+                unlink($destination);
+            }
         }
     }
-} // Fin del IF POST
+}
+// --- FIN: LÓGICA DE PROCESADO DEL FORMULARIO ---
 
+
+// --- INICIO: VISTA HTML ---
+require '../templates/header.php';
 ?>
 
-<div class="container">
-    <h2>Añadir Nuevo Cliente</h2>
+<h2>Añadir Nuevo Cliente</h2>
 
-    <?php
-    // Mostrar errores si los hay (después de un intento de POST fallido)
-    if (!empty($errores)) {
-        echo '<div class="alert alert-danger">';
-        foreach ($errores as $error) {
-            echo htmlspecialchars($error) . '<br>';
-        }
-        echo '</div>';
-    }
-    ?>
+<?php if ($error_msg): ?><p class="error"><?= $error_msg ?></p><?php endif; ?>
+<?php if ($success_msg): ?><p class="success"><?= $success_msg ?></p><?php endif; ?>
 
-    <form action="cliente_crear.php" method="post" enctype="multipart/form-data">
-        
-        <div class="mb-3">
-            <label for="nombre" class="form-label">Nombre *</label>
-            <input type="text" class="form-control" id="nombre" name="nombre" value="<?= htmlspecialchars($datos['nombre']) ?>" required>
-        </div>
-        
-        <div class="mb-3">
-            <label for="email" class="form-label">Email</label>
-            <input type="email" class="form-control" id="email" name="email" value="<?= htmlspecialchars($datos['email']) ?>">
-        </div>
-        
-        <div class="mb-3">
-            <label for="telefono" class="form-label">Teléfono</label>
-            <input type="tel" class="form-control" id="telefono" name="telefono" value="<?= htmlspecialchars($datos['telefono']) ?>">
-        </div>
+<form action="cliente_crear.php" method="POST" enctype="multipart/form-data">
+    
+    <div>
+        <label for="nombre">Nombre:</label>
+       <input type="text" id="nombre" name="nombre" required> 
+    </div>
+    
+    <div>
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email"> 
+    </div>
+    
+    <div>
+        <label for="telefono">Teléfono:</label>
+        <input type="text" id="telefono" name="telefono">
+    </div>
+    
+    <div>
+        <label for="direccion">Dirección:</label>
+        <input type="text" id="direccion" name="direccion">
+    </div>
 
-        <div class="mb-3">
-            <label for="direccion" class="form-label">Dirección</label>
-            <input type="text" class="form-control" id="direccion" name="direccion" value="<?= htmlspecialchars($datos['direccion']) ?>">
-        </div>
+    <div>
+        <label for="tipo_id">Tipo de Cliente:</label>
+       <select id="tipo_id" name="tipo_id">
+            <option value="0">-- Sin tipo --</option>
+            <?php foreach ($tipos_cliente as $tipo): ?>
+                <option value="<?= $tipo['id'] ?>">
+                    <?= htmlspecialchars($tipo['tipo']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    
+    <div>
+        <label for="etiqueta">Etiqueta:</label>
+        <select id="etiqueta" name="etiqueta">
+            <option value="activo">Activo</option>
+            <option value="prospecto">Prospecto</option>
+            <option value="inactivo">Inactivo</option>
+        </select>
+    </div>
 
-        <div class="row">
-            <div class="col-md-6 mb-3">
-                <label for="etiqueta" class="form-label">Etiqueta</label>
-                <select class="form-select" id="etiqueta" name="etiqueta">
-                    <option value="activo" <?= ($datos['etiqueta'] === 'activo') ? 'selected' : '' ?>>Activo</option>
-                    <option value="prospecto" <?= ($datos['etiqueta'] === 'prospecto') ? 'selected' : '' ?>>Prospecto</option>
-                    <option value="inactivo" <?= ($datos['etiqueta'] === 'inactivo') ? 'selected' : '' ?>>Inactivo</option>
-                </select>
-            </div>
+    <div>
+        <label for="imagen">Imagen (Logo/Foto):</label>
+     <input type="file" id="imagen" name="imagen" accept=".jpg,.jpeg,.png"> 
+    </div>
+    
+    <div>
+        <label for="comentarios">Comentarios:</label>
+        <textarea id="comentarios" name="comentarios" rows="4"></textarea> 
+    </div>
+    
+    <div>
+       <button type="submit" class="btn btn-create">Guardar Cliente</button> 
+    </div>
 
-            <div class="col-md-6 mb-3">
-                <label for="tipo_id" class="form-label">Tipo de Cliente</label>
-                <select class="form-select" id="tipo_id" name="tipo_id">
-                    <option value="">-- Seleccionar tipo --</option>
-                    [cite_start]<?php foreach ($tipos_cliente as $tipo): //[cite: 98]?>
-                        <option value="<?= htmlspecialchars($tipo['id']) ?>" <?= ($datos['tipo_id'] == $tipo['id']) ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($tipo['tipo']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-        </div>
+</form>
 
-        <div class="mb-3">
-            <label for="imagen" class="form-label">Imagen (Logo/Foto)</label>
-            <input type="file" class="form-control" id="imagen" name="imagen" accept=".jpg,.png">
-            <div class="form-text">Solo archivos JPG o PNG, máximo 3MB.</div>
-        </div>
-        
-        <div class="mb-3">
-            <label for="comentarios" class="form-label">Comentarios</label>
-            <textarea class="form-control" id="comentarios" name="comentarios" rows="3"><?= htmlspecialchars($datos['comentarios']) ?></textarea>
-        </div>
-
-        <button type="submit" class="btn btn-primary">Guardar Cliente</button>
-        <a href="index.php" class="btn btn-secondary">Cancelar</a>
-    </form>
-
-</div>
+<a href="index.php" class="btn">Volver a la lista</a>
 
 <?php
-// 5. INCLUIR FOOTER
-require_once '../templates/footer.php';
+require '../templates/footer.php';
 ?>
