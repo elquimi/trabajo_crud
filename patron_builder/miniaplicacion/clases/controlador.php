@@ -182,6 +182,8 @@ if (isset($_GET['eliminar'])) {
     <div class="control-panel">
         <h2>>> INICIAR SECUENCIA DE CREACIÓN</h2>
         <form method="POST" action="">
+
+     <!-------------------------------tipo_cabeza-------------------------------------------------->
             <div class="form-group">
                 <label>Tipo de Cabeza:</label>
                 <select name="tipo_cabeza" required>
@@ -192,16 +194,18 @@ if (isset($_GET['eliminar'])) {
                     <option value="Sin cabeza">Ninguna</option>
                 </select>
             </div>
+             <!-------------------------------cantidad_cabeza-------------------------------------------------->
             <div class="form-group">
                 <label>Cantidad:</label>
                 <input type="number" name="num_cabezas" min="0" max="5" value="1" required>
             </div>
-
+ <!-------------------------------tipo_torso-------------------------------------------------->
             <div class="form-group">
                 <label>Tipo de Torso:</label>
                 <input type="text" name="tipo_torso" placeholder="Ej: Metálico, Escamoso..." required>
             </div>
 
+             <!-------------------------------tipo_brazos-------------------------------------------------->
             <div class="form-group">
                 <label>Tipo de Brazos:</label>
                 <select name="tipo_brazos" required>
@@ -211,15 +215,19 @@ if (isset($_GET['eliminar'])) {
                     <option value="Brazos humanos">Humanos</option>
                 </select>
             </div>
+
+             <!-------------------------------cantidad_barzos-------------------------------------------------->
             <div class="form-group">
                 <label>Cantidad:</label>
                 <input type="number" name="num_brazos" min="0" max="8" value="2" required>
             </div>
 
+             <!-------------------------------tipo_piernas-------------------------------------------------->
             <div class="form-group">
                 <label>Tipo de Piernas:</label>
-                <input type="text" name="tipo_piernas" placeholder="Ej: Patas de araña, Ruedas..." required>
+                <input type="text" name="tipo_piernas" placeholder="Ej: Patas de araña, Ruedas...">
             </div>
+             <!-------------------------------cantidad_piernas-------------------------------------------------->
             <div class="form-group">
                 <label>Cantidad:</label>
                 <input type="number" name="num_piernas" min="0" max="10" value="2" required>
